@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@cloudflare/puppeteer": "^1.0.5",
-    "@rollup/rollup-win32-x64-msvc": "^4.57.1",
     "hono": "^4.11.6",
     "jose": "^6.0.0",
     "react": "^19.0.0",
