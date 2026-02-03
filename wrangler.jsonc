@@ -32,6 +32,10 @@
   "build": {
     "command": "npm run build",
   },
+  // Local dev settings (containers not supported on Windows)
+  "dev": {
+    "enable_containers": false,
+  },
   // Container configuration for the Moltbot sandbox
   "containers": [
     {

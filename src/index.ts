@@ -72,15 +72,15 @@ function validateRequiredEnv(env: MoltbotEnv): string[] {
     }
   }
 
-  // Check for AI Gateway or direct Anthropic configuration
+  // Check for AI Gateway, direct Anthropic, or Claude setup-token configuration
   if (env.AI_GATEWAY_API_KEY) {
     // AI Gateway requires both API key and base URL
     if (!env.AI_GATEWAY_BASE_URL) {
       missing.push('AI_GATEWAY_BASE_URL (required when using AI_GATEWAY_API_KEY)');
     }
-  } else if (!env.ANTHROPIC_API_KEY) {
-    // Direct Anthropic access requires API key
-    missing.push('ANTHROPIC_API_KEY or AI_GATEWAY_API_KEY');
+  } else if (!env.ANTHROPIC_API_KEY && !env.CLAUDE_SETUP_TOKEN) {
+    // Need at least one: API key, AI Gateway, or Claude setup-token
+    missing.push('ANTHROPIC_API_KEY, AI_GATEWAY_API_KEY, or CLAUDE_SETUP_TOKEN');
   }
 
   return missing;

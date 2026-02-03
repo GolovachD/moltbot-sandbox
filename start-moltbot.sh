@@ -286,6 +286,24 @@ console.log('Config:', JSON.stringify(config, null, 2));
 EOFNODE
 
 # ============================================================
+# REGISTER CLAUDE SETUP-TOKEN (if provided)
+# ============================================================
+# Claude Code setup-tokens use OAuth credentials from a Claude subscription.
+# Generated via `claude setup-token`, registered here before gateway starts.
+if [ -n "$CLAUDE_SETUP_TOKEN" ]; then
+    echo "Registering Claude Code setup-token..."
+    # Use paste-token (not setup-token) since the token was generated on a different machine.
+    # The CLI requires an interactive TTY, so we use expect to emulate one.
+    # Non-fatal: if registration fails, gateway still starts (ANTHROPIC_API_KEY may be set as fallback).
+    expect -c "
+        spawn clawdbot models auth paste-token --provider anthropic
+        expect -re {.+}
+        send \"$CLAUDE_SETUP_TOKEN\r\"
+        expect eof
+    " && echo "Claude Code setup-token registered" || echo "WARNING: Claude Code setup-token registration failed (will use fallback auth if available)"
+fi
+
+# ============================================================
 # START GATEWAY
 # ============================================================
 # Note: R2 backup sync is handled by the Worker's cron trigger

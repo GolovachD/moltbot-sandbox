@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(ls:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(npx wrangler deploy)",
+      "Bash(docker version:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npm run start:*)",
+      "Bash(npm test:*)",
+      "Bash(npx wrangler tail:*)",
+      "WebFetch(domain:docs.openclaw.ai)"
+    ]
+  }
+}
