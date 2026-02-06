@@ -55,9 +55,11 @@ Browser
 **Worker (src/index.ts):** Hono app with middleware pipeline: logger → sandbox init → public routes → env validation → CF Access auth → protected routes → catch-all proxy to gateway.
 
 **Key modules:**
+- `src/config.ts` — Constants: `MOLTBOT_PORT` (18789), `STARTUP_TIMEOUT_MS` (180s), `R2_MOUNT_PATH`, `R2_BUCKET_NAME`
+- `src/types.ts` — `MoltbotEnv` interface (all env bindings), `AccessUser`, `AppEnv` (Hono env type), `JWTPayload`
 - `src/auth/` — CF Access JWT verification (jose library) and Hono auth middleware
 - `src/gateway/process.ts` — Find/start gateway process, wait for port readiness (180s timeout)
-- `src/gateway/env.ts` — Maps worker env vars to container env vars (e.g., `MOLTBOT_GATEWAY_TOKEN` → `CLAWDBOT_GATEWAY_TOKEN`)
+- `src/gateway/env.ts` — Maps worker env vars to container env vars. AI Gateway vars are intelligently routed: if base URL ends in `/openai`, keys map to `OPENAI_*`; otherwise to `ANTHROPIC_*`
 - `src/gateway/r2.ts` — Mounts R2 bucket at `/data/moltbot` for persistent storage via s3fs
 - `src/gateway/sync.ts` — Periodic R2 backup sync (every 5 min via cron)
 - `src/routes/public.ts` — Unauthenticated routes: `/sandbox-health`, `/api/status`, `/logo*`
@@ -65,7 +67,9 @@ Browser
 - `src/routes/admin-ui.ts` — Serves React admin dashboard at `/_admin/`
 - `src/routes/debug.ts` — Debug endpoints at `/debug/*` (enabled via `DEBUG_ROUTES`)
 - `src/routes/cdp.ts` — Chrome DevTools Protocol shim for browser automation
-- `src/client/` — React admin UI (built by Vite, served at `/_admin/`)
+- `src/client/` — React admin UI (built by Vite, base path `/_admin/`)
+- `src/assets/` — HTML templates: `loading.html` (cold start page), `config-error.html`
+- `src/utils/logging.ts` — Logging with sensitive parameter redaction
 
 **Container setup:** `Dockerfile` builds image with Node 22 + clawdbot CLI. `start-moltbot.sh` restores config from R2, applies env vars, starts gateway with `--allow-unconfigured`.
 
@@ -78,7 +82,8 @@ Browser
 - **CLI calls from worker:** Always include `--url ws://localhost:18789`. CLI takes 10-15s due to WebSocket overhead. Use `waitForProcess()` helper.
 - **Success detection:** CLI outputs "Approved" (capital A). Use case-insensitive checks.
 - **WebSocket proxying:** Worker creates `WebSocketPair` to relay and transform messages between client and container.
-- **Auth layers:** Cloudflare Access (JWT) → Gateway Token (query param) → Device Pairing (approve via admin UI). `DEV_MODE=true` skips CF Access + pairing. `E2E_TEST_MODE=true` skips CF Access only.
+- **Auth layers:** Cloudflare Access (JWT) → Gateway Token (query param) → Device Pairing (approve via admin UI). `DEV_MODE=true` skips CF Access + pairing. `E2E_TEST_MODE=true` skips CF Access only (device pairing still required).
+- **AI Gateway routing:** `buildEnvVars()` inspects `AI_GATEWAY_BASE_URL` suffix — if it ends in `/openai`, keys are mapped to `OPENAI_*` env vars; otherwise to `ANTHROPIC_*`. AI Gateway vars take precedence over direct provider keys.
 - **Background work:** Uses `executionCtx.waitUntil()` for async tasks.
 - **Docker cache busting:** Bump version comment in Dockerfile when changing `start-moltbot.sh` or `moltbot.json.template`.
 - **Route handler style:** Keep handlers thin — extract logic to separate modules. Use Hono's context methods (`c.json()`, `c.html()`) for responses.
@@ -89,12 +94,22 @@ Worker env vars are mapped to container-internal names in `src/gateway/env.ts`:
 
 | Worker Variable | Container Variable | Notes |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` | Moltbot reads directly from env |
+| `AI_GATEWAY_API_KEY` | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | Routed based on `AI_GATEWAY_BASE_URL` suffix |
+| `AI_GATEWAY_BASE_URL` | `AI_GATEWAY_BASE_URL` + provider-specific `*_BASE_URL` | Trailing slashes stripped |
+| `ANTHROPIC_API_KEY` | `ANTHROPIC_API_KEY` | Fallback if AI Gateway not set |
+| `ANTHROPIC_BASE_URL` | `ANTHROPIC_BASE_URL` | Fallback if AI Gateway not set |
+| `OPENAI_API_KEY` | `OPENAI_API_KEY` | Fallback if AI Gateway not set |
+| `CLAUDE_SETUP_TOKEN` | `CLAUDE_SETUP_TOKEN` | OAuth credentials from Claude subscription |
 | `MOLTBOT_GATEWAY_TOKEN` | `CLAWDBOT_GATEWAY_TOKEN` | Also passed as `--token` flag |
 | `DEV_MODE` | `CLAWDBOT_DEV_MODE` | Maps to `controlUi.allowInsecureAuth` |
+| `CLAWDBOT_BIND_MODE` | `CLAWDBOT_BIND_MODE` | Bind mode passthrough |
 | `TELEGRAM_BOT_TOKEN` | `TELEGRAM_BOT_TOKEN` | Channel config |
+| `TELEGRAM_DM_POLICY` | `TELEGRAM_DM_POLICY` | `pairing` (default) or `open` |
 | `DISCORD_BOT_TOKEN` | `DISCORD_BOT_TOKEN` | Channel config |
+| `DISCORD_DM_POLICY` | `DISCORD_DM_POLICY` | `pairing` (default) or `open` |
 | `SLACK_BOT_TOKEN` / `SLACK_APP_TOKEN` | Same | Channel config |
+| `CDP_SECRET` | `CDP_SECRET` | For browser automation |
+| `WORKER_URL` | `WORKER_URL` | Public URL for CDP endpoint |
 
 ## Configuration
 
@@ -111,6 +126,8 @@ Worker env vars are mapped to container-internal names in `src/gateway/env.ts`:
 Vitest with tests colocated next to source files (`*.test.ts`). Coverage excludes `src/client/`. Environment: node with globals enabled. Config in [vitest.config.ts](vitest.config.ts).
 
 Test coverage includes: JWT/JWKS auth, environment variable mapping, process management, R2 mounting, and backup sync logic.
+
+Mock utilities in `src/test-utils.ts`: `createMockEnv()`, `createMockEnvWithR2()`, `createMockProcess()`, `createMockSandbox()`, `suppressConsole()`. Use these for consistent test setup.
 
 ## Local Development
 
@@ -144,7 +161,7 @@ Test coverage includes: JWT/JWKS auth, environment variable mapping, process man
 
 **New API endpoint:** Add handler in `src/routes/api.ts` → types in `src/types.ts` → client API in `src/client/api.ts` → tests.
 
-**New environment variable:** Add to `MoltbotEnv` in `src/types.ts` → add to `buildEnvVars()` in `src/gateway/env.ts` → update `.dev.vars.example` → document in README.md.
+**New environment variable:** Add to `MoltbotEnv` in `src/types.ts` → add to `buildEnvVars()` in `src/gateway/env.ts` → add env var mapping test in `src/gateway/env.test.ts` → update `.dev.vars.example` → document in README.md secrets table.
 
 ## Deployment & Debugging
 
