@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { AppEnv } from '../types';
 import { MOLTBOT_PORT } from '../config';
-import { findExistingMoltbotProcess, ensureMoltbotGateway } from '../gateway';
+import { findExistingMoltbotProcess, ensureMoltbotGateway, getFailedProcessLogs } from '../gateway';
 
 /**
  * Public routes - NO Cloudflare Access authentication required
@@ -39,6 +39,17 @@ publicRoutes.get('/api/status', async (c) => {
   try {
     const process = await findExistingMoltbotProcess(sandbox);
     if (!process) {
+      // Check if there's a recently failed process with logs
+      const failedLogs = await getFailedProcessLogs(sandbox);
+      if (failedLogs && (failedLogs.stderr || failedLogs.stdout)) {
+        return c.json({
+          ok: false,
+          status: 'failed',
+          stderr: failedLogs.stderr || '',
+          stdout: failedLogs.stdout || '',
+        });
+      }
+
       // No process found - trigger gateway start in background so polling
       // from the loading page can eventually recover
       c.executionCtx.waitUntil(

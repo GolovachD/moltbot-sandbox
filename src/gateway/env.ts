@@ -56,6 +56,7 @@ export function buildEnvVars(env: MoltbotEnv): Record<string, string> {
   if (env.CLAUDE_SETUP_TOKEN) envVars.CLAUDE_SETUP_TOKEN = env.CLAUDE_SETUP_TOKEN;
   if (env.CDP_SECRET) envVars.CDP_SECRET = env.CDP_SECRET;
   if (env.WORKER_URL) envVars.WORKER_URL = env.WORKER_URL;
+  if (env.PERPLEXITY_API_KEY) envVars.PERPLEXITY_API_KEY = env.PERPLEXITY_API_KEY;
 
   return envVars;
 }

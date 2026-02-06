@@ -160,6 +160,12 @@ describe('buildEnvVars', () => {
     expect(result.OPENAI_API_KEY).toBeUndefined();
   });
 
+  it('passes through PERPLEXITY_API_KEY when set', () => {
+    const env = createMockEnv({ PERPLEXITY_API_KEY: 'pplx-test-key' });
+    const result = buildEnvVars(env);
+    expect(result.PERPLEXITY_API_KEY).toBe('pplx-test-key');
+  });
+
   it('handles multiple trailing slashes in AI_GATEWAY_BASE_URL', () => {
     const env = createMockEnv({
       AI_GATEWAY_API_KEY: 'sk-gateway-key',

@@ -107,6 +107,20 @@
       background: rgba(248, 113, 113, 0.1);
       border-radius: 8px;
       display: none;
+      text-align: left;
+    }
+
+    .error-details {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: rgba(0, 0, 0, 0.3);
+      padding: 8px;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-top: 8px;
     }
     
     .ready {
@@ -125,7 +139,10 @@
     
     <p class="status" id="status">Starting container...</p>
     
-    <p class="error" id="error"></p>
+    <div class="error" id="error">
+      <div id="error-title"></div>
+      <div class="error-details" id="error-details" style="display: none;"></div>
+    </div>
     
     <p class="info">This usually takes 1-2 minutes on cold start</p>
   </div>
@@ -134,49 +151,64 @@
     const statusEl = document.getElementById('status');
     const titleEl = document.getElementById('title');
     const errorEl = document.getElementById('error');
+    const errorTitleEl = document.getElementById('error-title');
+    const errorDetailsEl = document.getElementById('error-details');
     let pollCount = 0;
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 5;
-    
+
+    function showError(title, details) {
+      errorTitleEl.textContent = title;
+      errorEl.style.display = 'block';
+      document.querySelector('.spinner').style.display = 'none';
+      if (details) {
+        errorDetailsEl.textContent = details;
+        errorDetailsEl.style.display = 'block';
+      }
+    }
+
+    function handleReady() {
+      titleEl.innerHTML = '<span class="ready">Moltworker is ready!</span>';
+      statusEl.textContent = 'Redirecting...';
+      document.querySelector('.spinner').style.display = 'none';
+      setTimeout(() => { globalThis.location.reload(); }, 500);
+    }
+
+    function handleFailed(data) {
+      titleEl.textContent = 'Startup Failed';
+      statusEl.textContent = 'The gateway process crashed during startup';
+      const parts = [];
+      if (data.stderr) parts.push('STDERR:\n' + data.stderr);
+      if (data.stdout) parts.push('STDOUT:\n' + data.stdout);
+      showError('Error Details:', parts.join('\n\n') || null);
+    }
+
+    function handlePending(data) {
+      if (data.status === 'not_running') {
+        statusEl.textContent = 'Container is starting up...';
+      } else if (data.status === 'not_responding') {
+        statusEl.textContent = 'Container started, waiting for gateway...';
+      } else {
+        statusEl.textContent = 'Checking status... (poll #' + pollCount + ')';
+      }
+      setTimeout(checkStatus, 2000);
+    }
+
     async function checkStatus() {
       pollCount++;
-      
+
       try {
         const response = await fetch('/api/status');
         const data = await response.json();
         consecutiveErrors = 0;
-        
-        if (data.ok && data.status === 'running') {
-          // Container is ready! Reload the page
-          titleEl.innerHTML = '<span class="ready">Moltworker is ready!</span>';
-          statusEl.textContent = 'Redirecting...';
-          document.querySelector('.spinner').style.display = 'none';
-          
-          // Small delay so user sees the "ready" message
-          setTimeout(() => {
-            window.location.reload();
-          }, 500);
-          return;
-        }
-        
-        // Update status message based on state
-        if (data.status === 'not_running') {
-          statusEl.textContent = 'Container is starting up...';
-        } else if (data.status === 'not_responding') {
-          statusEl.textContent = 'Container started, waiting for gateway...';
-        } else {
-          statusEl.textContent = 'Checking status... (poll #' + pollCount + ')';
-        }
-        
-        // Continue polling
-        setTimeout(checkStatus, 2000);
-        
-      } catch (err) {
+
+        if (data.ok && data.status === 'running') return handleReady();
+        if (data.status === 'failed') return handleFailed(data);
+        handlePending(data);
+      } catch {
         consecutiveErrors++;
-        
         if (consecutiveErrors >= maxConsecutiveErrors) {
-          errorEl.textContent = 'Unable to reach server. Please refresh the page.';
-          errorEl.style.display = 'block';
+          showError('Unable to reach server. Please refresh the page.', null);
           statusEl.textContent = 'Connection lost';
         } else {
           statusEl.textContent = 'Retrying... (' + consecutiveErrors + '/' + maxConsecutiveErrors + ')';
@@ -184,8 +216,7 @@
         }
       }
     }
-    
-    // Start polling after a brief delay
+
     setTimeout(checkStatus, 1000);
   </script>
 </body>
